@@ -14,7 +14,7 @@ type Opts struct {
 	Name    string
 	Key     string
 	Silent  bool
-	GetUser func(ctx context.Context) string
+	GetUser func(ctx context.Context, req *http.Request) string
 }
 
 // Recover is a middleware that recover panics and notifies Raygun. It's intended to replace middleware.Recover
@@ -22,7 +22,7 @@ type Opts struct {
 func Recover(opts Opts) goa.Middleware {
 	raygun, err := raygun4go.New(opts.Name, opts.Key)
 	if err != nil {
-		panic("Unable to create Raygun client:" + err.Error())
+		panic("Unable to create Raygun client: " + err.Error())
 	}
 
 	raygun.Silent(opts.Silent)
@@ -42,7 +42,7 @@ func Recover(opts Opts) goa.Middleware {
 
 					// Attempt to retrieve a user
 					if opts.GetUser != nil {
-						rayErr.SetUser(opts.GetUser(ctx))
+						rayErr.SetUser(opts.GetUser(ctx, req))
 					}
 
 					if subErr := raygun.SubmitError(rayErr); subErr != nil {
