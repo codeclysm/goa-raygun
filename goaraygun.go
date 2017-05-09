@@ -2,6 +2,7 @@ package goaraygun
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -39,6 +40,9 @@ func Recover(opts Opts) goa.Middleware {
 
 					rayErr := raygun.CreateErrorEntry(err)
 					rayErr.SetRequest(req)
+
+					payload, _ := json.MarshalIndent(goa.ContextRequest(ctx).Payload, "", "	")
+					rayErr.SetCustomData(string(payload))
 
 					// Attempt to retrieve a user
 					if opts.GetUser != nil {
