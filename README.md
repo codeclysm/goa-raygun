@@ -33,14 +33,14 @@ service.Use(goaraygun.Recover())
 # Debugging
 If you don't want to send errors while you are debugging you can use the `Silent Option`. It will print the stacktrace in the stdout instead of sending it to the server
 
-```
+```go
 service.Use(goaraygun.Notify("MYSECRETRAYGUNKEY", &goaraygun.Opts{Silent: true}))
 ```
 
 # User info
 Every app has its way to retrieve the user info, so if you want that info on raygun you'll have to work a bit for it:
 
-```
+```go
 func GetUser(ctx context.Context, req *http.Request) string {
 	...
 }
