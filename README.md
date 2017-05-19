@@ -1,7 +1,7 @@
 goa-raygun
 ==========
 
-A goa middleware to recover panics and send them to RayGun. [Godoc](https://godoc.org/github.com/codeclysm/goa-raygun)
+A [Goa](https://goa.design) middleware to recover panics and send them to [RayGun](https://raygun.com/). [Godoc](https://godoc.org/github.com/codeclysm/goa-raygun)
 
 The minimal setup to have it working is to put the Notify middleware in your middleware chain:
 
