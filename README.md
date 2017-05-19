@@ -1,7 +1,7 @@
 goa-raygun
 ==========
 
-A goa middleware to recover panics and send them to RayGun
+A goa middleware to recover panics and send them to RayGun. [Godoc](https://godoc.org/github.com/codeclysm/goa-raygun)
 
 The minimal setup to have it working is to put the Notify middleware in your middleware chain:
 
@@ -15,7 +15,7 @@ service.Use(goaraygun.Notify("MYSECRETRAYGUNKEY", nil))
 service.Use(middleware.Recover())
 ```
 
-And that's it. Panics and crashes will be sent to Raygun using the key you specified.
+And that's it. Panics and crashes will be sent to Raygun using the key you specified
 
 # Cleaner errors
 The goa `recover` middleware creates an error with all the stacktrace in the error message, while raygun wants it outside.
