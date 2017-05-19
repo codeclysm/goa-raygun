@@ -11,6 +11,8 @@ import (
 	"github.com/goadesign/goa"
 )
 
+var version = "v1.0.0"
+
 // Recover is a middleware that recovers panics and maps them to errors. Use this instead of the goa one to have cleaner errors without the stacktrace in their main message.
 func Recover() goa.Middleware {
 	return func(h goa.Handler) goa.Handler {
@@ -36,8 +38,6 @@ func Recover() goa.Middleware {
 
 // Opts contain the configuration of the Notify middleware
 type Opts struct {
-	// Name is an optional value to provide the name of the app you are monitoring
-	Name string
 	// Version is an optional value to provide the version of the app you are monitoring
 	Version string
 	// Silent is an optional value to avoid sending errors but just to print them in the stdout. Useful for debugging
@@ -61,12 +61,13 @@ func Notify(key string, opts *Opts) goa.Middleware {
 			if err != nil {
 				if !skip(ctx, *opts, err) {
 					post := raygun.NewPost()
+					post.Details.Version = opts.Version
 					post.Details.Error = raygun.FromErr(err)
 					post.Details.Request = raygun.FromReq(req)
 					post.Details.UserCustomData = goa.ContextRequest(ctx).Payload
 					post.Details.Client = raygun.Client{
 						Name:      "goa-raygun",
-						Version:   "1.0.0",
+						Version:   version,
 						ClientURL: "https://github.com/codeclysm/goa-raygun",
 					}
 
