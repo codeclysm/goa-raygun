@@ -1,33 +1,18 @@
+// Package goaraygun provides a couple of middlewares for https://goa.design/ to send failures to https://raygun.com/
 package goaraygun
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 
+	"errors"
+
+	"github.com/codeclysm/raygun"
 	"github.com/goadesign/goa"
-	"github.com/gsblue/raygun4go"
 )
 
-// Opts contain the configuration of the middleware
-type Opts struct {
-	Name    string
-	Key     string
-	Silent  bool
-	GetUser func(ctx context.Context, req *http.Request) string
-}
-
-// Recover is a middleware that recover panics and notifies Raygun. It's intended to replace middleware.Recover
-// Note that it doesn't print the full stack trace anymore (since it's sent to raygun)
-func Recover(opts Opts) goa.Middleware {
-	raygun, err := raygun4go.New(opts.Name, opts.Key)
-	if err != nil {
-		panic("Unable to create Raygun client: " + err.Error())
-	}
-
-	raygun.Silent(opts.Silent)
-
+// Recover is a middleware that recovers panics and maps them to errors. Use this instead of the goa one to have cleaner errors without the stacktrace in their main message.
+func Recover() goa.Middleware {
 	return func(h goa.Handler) goa.Handler {
 		return func(ctx context.Context, rw http.ResponseWriter, req *http.Request) (err error) {
 			defer func() {
@@ -38,24 +23,78 @@ func Recover(opts Opts) goa.Middleware {
 						err = errors.New(e.(string))
 					}
 
-					rayErr := raygun.CreateErrorEntry(err)
-					rayErr.SetRequest(req)
+					rayErr := raygun.FromErr(err)
+					rayErr.StackTrace = rayErr.StackTrace[2:]
+					err = rayErr
 
-					payload, _ := json.MarshalIndent(goa.ContextRequest(ctx).Payload, "", "	")
-					rayErr.SetCustomData(string(payload))
-
-					// Attempt to retrieve a user
-					if opts.GetUser != nil {
-						rayErr.SetUser(opts.GetUser(ctx, req))
-					}
-
-					if subErr := raygun.SubmitError(rayErr); subErr != nil {
-						panic(subErr.Error())
-					}
 				}
 			}()
-
 			return h(ctx, rw, req)
 		}
 	}
+}
+
+// Opts contain the configuration of the Notify middleware
+type Opts struct {
+	// Name is an optional value to provide the name of the app you are monitoring
+	Name string
+	// Version is an optional value to provide the version of the app you are monitoring
+	Version string
+	// Silent is an optional value to avoid sending errors but just to print them in the stdout. Useful for debugging
+	Silent bool
+	// Skip is an optional function to decide if the error is worth sending to raygun or not.
+	// If it's not defined, only panics and status codes of 500 are sent.
+	Skip func(ctx context.Context, err error) bool
+	// GetUser is an optional function to retrieve the username from the context and/or the request
+	GetUser func(ctx context.Context, req *http.Request) string
+}
+
+// Notify is a middleware that sends critical errors to Raygun. It should sit between ErrorHandler and Recover in the middleware chain. Key is the raygun api key, opts can be nil or can be an Opts struct
+func Notify(key string, opts *Opts) goa.Middleware {
+	if opts == nil {
+		opts = &Opts{Silent: false}
+	}
+
+	return func(h goa.Handler) goa.Handler {
+		return func(ctx context.Context, rw http.ResponseWriter, req *http.Request) error {
+			err := h(ctx, rw, req)
+			if err != nil {
+				if !skip(ctx, *opts, err) {
+					post := raygun.NewPost()
+					post.Details.Error = raygun.FromErr(err)
+					post.Details.Request = raygun.FromReq(req)
+					post.Details.UserCustomData = goa.ContextRequest(ctx).Payload
+					post.Details.Client = raygun.Client{
+						Name:      "goa-raygun",
+						Version:   "1.0.0",
+						ClientURL: "https://github.com/codeclysm/goa-raygun",
+					}
+
+					if opts.GetUser != nil {
+						post.Details.User = raygun.User{Identifier: opts.GetUser(ctx, req)}
+					}
+
+					if !opts.Silent {
+						if e := raygun.Submit(post, key, nil); e != nil {
+							panic(e)
+						}
+					}
+				}
+			}
+
+			return err
+		}
+	}
+}
+
+func skip(ctx context.Context, opts Opts, err error) bool {
+	if opts.Skip != nil {
+		return opts.Skip(ctx, err)
+	}
+
+	if err, ok := err.(goa.ServiceError); ok {
+		return err.ResponseStatus() != 500
+	}
+
+	return false
 }
