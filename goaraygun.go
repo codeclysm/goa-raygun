@@ -3,6 +3,7 @@ package goaraygun
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"errors"
@@ -79,6 +80,8 @@ func Notify(key string, opts *Opts) goa.Middleware {
 						if e := raygun.Submit(post, key, nil); e != nil {
 							panic(e)
 						}
+					} else {
+						fmt.Println(post.Details.Error.StackTrace.String())
 					}
 				}
 			}
