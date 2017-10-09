@@ -12,7 +12,7 @@ import (
 	"github.com/goadesign/goa"
 )
 
-var version = "v1.0.0"
+var version = "v1.1.0"
 
 // Recover is a middleware that recovers panics and maps them to errors. Use this instead of the goa one to have cleaner errors without the stacktrace in their main message.
 func Recover() goa.Middleware {
@@ -50,39 +50,56 @@ type Opts struct {
 	GetUser func(ctx context.Context, req *http.Request) string
 }
 
-// Notify is a middleware that sends critical errors to Raygun. It should sit between ErrorHandler and Recover in the middleware chain. Key is the raygun api key, opts can be nil or can be an Opts struct
-func Notify(key string, opts *Opts) goa.Middleware {
+// Manager exposes a Notify middleware and and an Error function. Use the Notify middleware in the goa middleware chain, and the Error method to send an error to
+type Manager struct {
+	Opts Opts
+	Key  string
+}
+
+// New returns a new Manager
+func New(key string, opts *Opts) *Manager {
 	if opts == nil {
 		opts = &Opts{Silent: false}
 	}
+	return &Manager{*opts, key}
+}
 
+// Error sends a custom error to raygun. You can provide a request, tags and custom data if you want
+func (m *Manager) Error(ctx context.Context, err error, req *http.Request, tags []string, data interface{}) {
+	post := raygun.NewPost()
+	post.Details.Version = m.Opts.Version
+	post.Details.Error = raygun.FromErr(err)
+	if req != nil {
+		post.Details.Request = raygun.FromReq(req)
+		if m.Opts.GetUser != nil {
+			post.Details.User = raygun.User{Identifier: m.Opts.GetUser(ctx, req)}
+		}
+	}
+	post.Details.UserCustomData = data
+	post.Details.Tags = tags
+	post.Details.Client = raygun.Client{
+		Name:      "goa-raygun",
+		Version:   version,
+		ClientURL: "https://github.com/codeclysm/goa-raygun",
+	}
+
+	if !m.Opts.Silent {
+		if e := raygun.Submit(post, m.Key, nil); e != nil {
+			panic(e)
+		}
+	} else {
+		fmt.Printf("%+v\n", err)
+	}
+}
+
+// Middleware is a middleware that sends critical errors to Raygun. It should sit between ErrorHandler and Recover in the middleware chain. Key is the raygun api key, opts can be nil or can be an Opts struct
+func (m *Manager) Middleware() goa.Middleware {
 	return func(h goa.Handler) goa.Handler {
 		return func(ctx context.Context, rw http.ResponseWriter, req *http.Request) error {
 			err := h(ctx, rw, req)
 			if err != nil {
-				if !skip(ctx, *opts, err) {
-					post := raygun.NewPost()
-					post.Details.Version = opts.Version
-					post.Details.Error = raygun.FromErr(err)
-					post.Details.Request = raygun.FromReq(req)
-					post.Details.UserCustomData = goa.ContextRequest(ctx).Payload
-					post.Details.Client = raygun.Client{
-						Name:      "goa-raygun",
-						Version:   version,
-						ClientURL: "https://github.com/codeclysm/goa-raygun",
-					}
-
-					if opts.GetUser != nil {
-						post.Details.User = raygun.User{Identifier: opts.GetUser(ctx, req)}
-					}
-
-					if !opts.Silent {
-						if e := raygun.Submit(post, key, nil); e != nil {
-							panic(e)
-						}
-					} else {
-						fmt.Println(post.Details.Error.StackTrace.String())
-					}
+				if !skip(ctx, m.Opts, err) {
+					m.Error(ctx, err, req, []string{"critical"}, goa.ContextRequest(ctx).Payload)
 				}
 			}
 
