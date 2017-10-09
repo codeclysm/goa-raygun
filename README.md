@@ -10,7 +10,8 @@ service.Use(middleware.RequestID())
 service.Use(middleware.ErrorHandler(service, true))
 
 // this is the middleware
-service.Use(goaraygun.Notify("MYSECRETRAYGUNKEY", nil))
+notify := goaraygun.New("MYSECRETRAYGUNKEY", nil)
+service.Use(notify.Middleware())
 
 service.Use(middleware.Recover())
 ```
@@ -24,17 +25,26 @@ You can simply use the `goaraygun.Recover` middleware:
 ```go
 service.Use(middleware.RequestID())
 service.Use(middleware.ErrorHandler(service, true))
-service.Use(goaraygun.Notify("MYSECRETRAYGUNKEY", nil))
+notify := goaraygun.New("MYSECRETRAYGUNKEY", nil)
+service.Use(notify.Middleware())
 
 // It creates errors more raygun-friendly, but still understandable by ErrorHandler
 service.Use(goaraygun.Recover())
 ```
 
-# Debugging
-If you don't want to send errors while you are debugging you can use the `Silent Option`. It will print the stacktrace in the stdout instead of sending it to the server
+# Send errors directly
+You can use the goa-raygun manager to send an error directly to raygun. Useful if you don't want to stop execution but you still want to know if something went wrong:
 
 ```go
-service.Use(goaraygun.Notify("MYSECRETRAYGUNKEY", &goaraygun.Opts{Silent: true}))
+notify.Error(context.Background(), err, request, data)
+```
+
+# Debugging
+If you don't want to send errors while you are debugging you can use the `Silent Option`. It will print the error in the stdout instead of sending it to the server
+
+```go
+notify := goaraygun.New("MYSECRETRAYGUNKEY", &goaraygun.Opts{Silent: true})
+service.Use(notify.Middleware())
 ```
 
 # User info
@@ -44,5 +54,6 @@ Every app has its way to retrieve the user info, so if you want that info on ray
 func GetUser(ctx context.Context, req *http.Request) string {
 	...
 }
-service.Use(goaraygun.Notify("MYSECRETRAYGUNKEY", &goaraygun.Opts{GetUser: GetUser}))
+notify := goaraygun.New("MYSECRETRAYGUNKEY", &goaraygun.Opts{GetUser: GetUser})
+service.Use(notify.Middleware())
 ```
